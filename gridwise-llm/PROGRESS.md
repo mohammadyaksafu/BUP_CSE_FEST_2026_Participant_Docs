@@ -34,7 +34,13 @@ Tracks implementation status against `problem.md` (canonical spec) and `instruct
       submission deadline, per the rulebook.
 - [x] **Fallback Docker image pushed to Docker Hub, public and pullable, no login required**:
       - Image: `mohammadyaksafu/gridwise-llm:latest`
-      - Digest: `sha256:30fd8b4f62a8c57dfc738c0d107d4668edb428663dce9aad27bff7efbe782f57`
+      - Digest: `sha256:03273dcf99647ebddab5c2415ec7f0ea25449de4b9fea89178f33354cf9bc8b9`
+        (**updated** — the first pushed image, `sha256:30fd8b4f...`, predated the validation-crash
+        and optimizer-crash bug fixes and the LLM prompt hardening found while building the test
+        suite. Rebuilt from current `app/` source, smoke-tested in a fresh container — confirmed the
+        bad-battery request now returns a clean `400` instead of crashing, and a live sample through
+        the container still returns the correct interpretation and exact reference cost — then
+        re-pushed to `:latest` and reconfirmed public via the Docker Hub API.)
       - Verified via Docker Hub API: `"is_private": false`
       - Pull command: `docker pull mohammadyaksafu/gridwise-llm:latest`
       - Run command: `docker run -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=<key> -e LLM_MODEL=gemini-flash-lite-latest mohammadyaksafu/gridwise-llm:latest`
@@ -44,18 +50,33 @@ Tracks implementation status against `problem.md` (canonical spec) and `instruct
 - [ ] **3-minute video** covering problem, architecture, LLM→guardrail→optimizer flow, run/test —
       NOT DONE.
 - [x] **Working public endpoint reachable by the judge**: `https://gridwise-llm-rosy.vercel.app/`.
-      Initially found broken (LLM env vars missing on Vercel — every note fell back to `no_op`,
-      wrong schedule costs); user added `LLM_PROVIDER`/`GEMINI_API_KEY`/`LLM_MODEL` env vars on
-      Vercel and redeployed. **Re-verified after the fix: all 10 public sample cases pass fully
-      against the live URL** — correct `directive_interpretation` for every note, 0 structural
-      errors (energy balance, battery bounds, EOD neutrality, totals), and `total_cost_bdt` matches
-      the reference exactly on all 10 cases. Latency 1.36s-2.24s per request, well under the 5s p95
-      target. No login/VPN required — plain public HTTPS URL, matches the judge access requirement.
+      Went through a full up/down/up cycle this session, now confirmed healthy:
+      1. Working and verified (10/10 samples, 1.36s-2.24s latency).
+      2. Later found completely unreachable at the **TCP level** (DNS resolved fine, but the
+         connection to port 443 timed out 3/3 times — not a 404/500, a connection failure; ruled out
+         a local network issue since `google.com`/`hub.docker.com`/`vercel.com` all connected
+         instantly in the same check). User resolved this on the Vercel side.
+      3. Re-verified: `/health` back to 200 OK, and **all 10 public samples pass again** (correct
+         interpretation, 0 structural errors, exact reference costs) — **but** the first full 10-case
+         run showed elevated latency (22.7s-29.3s/request; SAMPLE-09 hit 29.3s, uncomfortably close
+         to the 30s hard timeout). Isolated the cause: a direct local call to Gemini with the same
+         key/model took 3.61s (Gemini itself is fine), so the slowdown was Vercel-side — consistent
+         with cold-start/settling latency right after the endpoint came back online. Confirmed
+         transient: 3 immediate back-to-back follow-up requests all came back in 1.5s-2.1s, matching
+         the original healthy performance.
+      **Residual risk to be aware of**: if the deployment goes idle for any stretch during the actual
+      4-hour judging window, the next request(s) after that gap may see a similar cold-start latency
+      spike (in the worst case observed, within ~1s of the 30s timeout). Consider pinging `/health`
+      periodically during the judging window to keep it warm, or accept the risk since it self-
+      recovered to well under the 5s target within a few requests every time it was tested.
 
-**Bottom line: everything required for the base 100-point score is now DONE and verified live** —
-core system, GitHub repo, Docker Hub registry push, and the public Vercel endpoint (all 10 public
-samples passing against the real deployed URL). **Only the 3-minute video (tie-break only, 0 base
-points) remains.**
+**Bottom line as of the final full check**: everything is verified working — core system
+(**235/235 tests pass**, including 9 live LLM calls), GitHub repo confirmed private and clean
+(`solution/` and the old root-level `TASK_LIST.md`/`TEST_PLAN.md` fully removed, locally and on
+GitHub), Docker Hub image confirmed still public and pullable, and the live Vercel endpoint
+confirmed healthy again after a temporary outage (see the endpoint note above for the full
+up/down/up story and the cold-start latency risk to keep in mind). **Only the 3-minute video
+(tie-break only, 0 base points) remains.**
 
 ## Core pipeline
 
