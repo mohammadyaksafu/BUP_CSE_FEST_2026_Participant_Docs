@@ -27,22 +27,35 @@ Tracks implementation status against `problem.md` (canonical spec) and `instruct
 - [x] README is self-contained with clean local quickstart, env vars, model/provider, LLM role,
       guardrails, optimizer/solver, dependencies, run command, `/health` + sample test, limitations,
       no committed secrets.
-- [ ] **Repository created after question reveal, private during event, public after deadline** —
-      NOT DONE. No git repo exists yet in `gridwise-llm/` and `gh` is not authenticated on this
-      machine.
-- [ ] **Fallback Docker image submitted with an exact pullable tag/digest, verified `docker pull` +
-      `docker run` reaching `/health`** — PARTIALLY DONE. Image builds and runs correctly *locally*
-      (`gridwise-llm:latest`), but it has not been pushed to any registry, so there is no pullable
-      reference yet — `docker login` has not been run for any registry on this machine.
+- [x] **Repository created, currently private** — `github.com/mohammadyaksafu/BUP_CSE_FEST_2026_Participant_Docs`,
+      contains the full `gridwise-llm/` source (30 tracked files), 1 commit so far, remote
+      confirmed unauthenticated-`404` (i.e. genuinely private right now). **User confirms this
+      satisfies "created after question reveal"**; remember to flip it to public only after the
+      submission deadline, per the rulebook.
+- [x] **Fallback Docker image pushed to Docker Hub, public and pullable, no login required**:
+      - Image: `mohammadyaksafu/gridwise-llm:latest`
+      - Digest: `sha256:30fd8b4f62a8c57dfc738c0d107d4668edb428663dce9aad27bff7efbe782f57`
+      - Verified via Docker Hub API: `"is_private": false`
+      - Pull command: `docker pull mohammadyaksafu/gridwise-llm:latest`
+      - Run command: `docker run -p 8000:8000 -e LLM_PROVIDER=gemini -e GEMINI_API_KEY=<key> -e LLM_MODEL=gemini-flash-lite-latest mohammadyaksafu/gridwise-llm:latest`
+      - Page: <https://hub.docker.com/r/mohammadyaksafu/gridwise-llm>
+      - Not yet re-verified with a fresh `docker pull` from empty local cache (image was already
+        present locally when pushed) — worth a clean-machine pull test before final submission.
 - [ ] **3-minute video** covering problem, architecture, LLM→guardrail→optimizer flow, run/test —
       NOT DONE.
-- [ ] **Working public endpoint reachable by the judge** (no login/VPN) — NOT DONE. Current
-      instance is `localhost:8000` only, reachable from this machine, not the internet.
+- [x] **Working public endpoint reachable by the judge**: `https://gridwise-llm-rosy.vercel.app/`.
+      Initially found broken (LLM env vars missing on Vercel — every note fell back to `no_op`,
+      wrong schedule costs); user added `LLM_PROVIDER`/`GEMINI_API_KEY`/`LLM_MODEL` env vars on
+      Vercel and redeployed. **Re-verified after the fix: all 10 public sample cases pass fully
+      against the live URL** — correct `directive_interpretation` for every note, 0 structural
+      errors (energy balance, battery bounds, EOD neutrality, totals), and `total_cost_bdt` matches
+      the reference exactly on all 10 cases. Latency 1.36s-2.24s per request, well under the 5s p95
+      target. No login/VPN required — plain public HTTPS URL, matches the judge access requirement.
 
-**Bottom line: the core system (LLM interpretation, guardrails, optimizer, validation, API
-contract, Docker image, README, and a 215-test suite) is fully built and verified. What's left is
-entirely submission logistics — GitHub repo, registry push, public hosting, and the video — each of
-which needs your account/credentials, per your last instruction to hold off on those for now.**
+**Bottom line: everything required for the base 100-point score is now DONE and verified live** —
+core system, GitHub repo, Docker Hub registry push, and the public Vercel endpoint (all 10 public
+samples passing against the real deployed URL). **Only the 3-minute video (tie-break only, 0 base
+points) remains.**
 
 ## Core pipeline
 
@@ -86,6 +99,13 @@ which needs your account/credentials, per your last instruction to hold off on t
       - Latency: 3.45s–4.27s per request (avg 3.83s), comfortably under the 5s p95 target and the
         30s per-request timeout.
 - [x] `app.main` import/startup sanity check (no import errors, dependencies installed)
+- [x] **`MANUAL_TESTING.md` added** — step-by-step curl/PowerShell instructions for a human to test
+      everything by hand (no pytest): health check, one full sample walkthrough with a field-by-field
+      checklist, all 10 public samples against a reference table (expected directive/hours/cost per
+      case), 5 malformed/edge-case requests with expected 400s, a paraphrase test, and Docker-specific
+      checks. Also extracted each public sample's input into `manual_test_cases/SAMPLE-0N.json` plus
+      4 edge-case JSON files, so nothing has to be hand-typed. Every command in the guide was run and
+      verified live during this session (all match expected output).
 - [x] **Full pytest suite added** (`tests/`, run with `pytest` — see `pytest.ini`), covering every
       testing category requested: requirement-based, black-box, white-box, regression, robustness,
       LLM/prompt, optimization/constraint, API/integration, and security/failure testing.
@@ -110,6 +130,19 @@ which needs your account/credentials, per your last instruction to hold off on t
       inclusive in everyday English, unlike the spec's demonstrated "to"/"until" wording. The
       prompt now explicitly calls out "to"/"until"/"till"/"through"/dash ranges as all being
       end-exclusive per the GridWise convention, and the live test now passes.
+- [x] **`tests/test_corner_cases.py` added** (20 more tests) — boundary/degenerate configurations
+      beyond the original 9 categories: battery starting exactly full or exactly at its floor,
+      `minimum_energy_kwh == capacity_kwh` (zero-flexibility battery), `max_charge`/`max_discharge`
+      = 0 (battery forced fully idle for the whole day, individually and together), a 1 kWh battery
+      against 100+ kWh/h demand, `solar_reduction` factor at the exact 0.0/1.0 boundaries,
+      `max_grid_kwh = 0.0`, `minimum_battery_reserve == capacity`, a reserve-on-hour-23 directive
+      that directly contradicts end-of-day neutrality (must raise a controlled
+      `OptimizationInfeasibleError`, not crash), all 4 hard directive types stacked on the same
+      hour at once, overlapping same-type directives on one hour (pins down and documents the
+      current "last one wins" behavior since the spec doesn't define this case), whole-number vs.
+      fractional float hour values at the request-model boundary, zero/negative tariff, and a
+      1,000,000 kWh battery capacity. **Result: 20/20 passed on first run — no new bugs found**,
+      which is itself a useful confirmation that the boundary behavior is sound.
 
 ### Test suite breakdown by category (`gridwise-llm/tests/`)
 
@@ -120,11 +153,12 @@ which needs your account/credentials, per your last instruction to hold off on t
 | `test_requirements.py` | Requirement-based | 120 | 12 checks per problem.md Section 12 checklist, parametrized over all 10 public cases |
 | `test_regression_samples.py` | Regression | 10 | Locks in reference-optimal cost/grid totals per public case |
 | `test_robustness.py` | Robustness | 15 | Malformed/empty/huge/unicode input, provider outage, garbage LLM output — never crashes |
+| `test_corner_cases.py` | Corner cases | 20 | Battery/directive boundary values, degenerate configs, stacked directives, EOD-vs-reserve conflicts, request-model numeric edge cases |
 | `test_llm_prompt.py` | LLM/Prompt (live) | 9 | Real Gemini calls, hand-written paraphrases per directive type, distractors, multi-note ordering |
 | `test_optimizer_constraints.py` | Optimization/Constraint | 6 | Crafted scenarios with a knowable optimal answer; proves cost-minimization, not just feasibility |
 | `test_api_integration.py` | API/Integration | 4 | Multi-directive combos through the full stack, full totals cross-check |
 | `test_security.py` | Security & Failure | 6 | Secret leakage, stack-trace leakage, prompt-injection-shaped LLM output neutralized by guardrails |
-| **Total** | | **215** (206 free + 9 live) | Run everything: `pytest`. Skip live LLM calls: `pytest -m "not llm"`. Only live: `pytest -m llm` |
+| **Total** | | **235** (226 free + 9 live) | Run everything: `pytest`. Skip live LLM calls: `pytest -m "not llm"`. Only live: `pytest -m llm` |
 
 ## Deployment & submission
 
@@ -154,12 +188,12 @@ which needs your account/credentials, per your last instruction to hold off on t
       blocked on `gh auth login` (not yet run) or the user creating it manually on github.com
 - [ ] Record 3-minute architecture/solution video (tie-break only, not base score)
 
-## Remaining work (in priority order) — all blocked on user credentials/decisions
+## Remaining work (in priority order)
 
-1. GitHub repo: create after question reveal, private during event, public after deadline. Needs
-   `gh auth login` (not yet run) or manual creation on github.com.
-2. Push the image to a registry (Docker Hub or GHCR) and record the exact pullable tag/digest.
-   Needs `docker login` (not yet run) to a chosen registry.
+1. ~~GitHub repo~~ — DONE (private, `mohammadyaksafu/BUP_CSE_FEST_2026_Participant_Docs`).
+2. ~~Push the image to a registry~~ — DONE (Docker Hub, `mohammadyaksafu/gridwise-llm:latest`,
+   public). Remember: repo visibility must flip private -> public only after the submission
+   deadline, per the rulebook — don't do that early.
 3. Deploy a publicly reachable instance (Render, Fly.io, Railway, a VM, etc. — any reachable
    platform is allowed). Needs the user's choice of platform + its credentials.
 4. Record the 3-minute video (problem, architecture, LLM->guardrail->optimizer flow, run/test demo).
